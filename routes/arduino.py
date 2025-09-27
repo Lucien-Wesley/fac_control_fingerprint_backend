@@ -10,10 +10,7 @@ arduino_bp = Blueprint("arduino", __name__)
 @arduino_bp.get("/ports")
 @jwt_required()
 def list_ports():
-    return jsonify({
-        "ports": arduino_manager.list_ports(),
-        "status": arduino_manager.status(),
-    })
+    return jsonify( arduino_manager.list_ports())
 
 
 @arduino_bp.get("/status")
@@ -47,10 +44,7 @@ def disconnect():
 @jwt_required()
 def refresh():
     # Alias to list ports (forces re-enumeration)
-    return jsonify({
-        "ports": arduino_manager.list_ports(),
-        "status": arduino_manager.status(),
-    })
+    return jsonify(arduino_manager.list_ports())
 
 
 @arduino_bp.post("/test-capture")
@@ -69,4 +63,4 @@ def test_capture():
         return jsonify({"error": "'entity_id' must be an integer"}), 400
 
     success, message = arduino_manager.capture_fingerprint(entity=entity, entity_id=entity_id, max_retries=max_retries)
-    return jsonify({"success": success, "message": message}) , (200 if success else 400)
+    return jsonify({"success": success, "response": message}) , (200 if success else 400)
