@@ -10,7 +10,13 @@ arduino_bp = Blueprint("arduino", __name__)
 @arduino_bp.get("/ports")
 @jwt_required()
 def list_ports():
-    return jsonify( arduino_manager.list_ports())
+    print([ {"port": port["device"],"name":port["name"] ,"description": port["description"], "manufacturer": port["manufacturer"]}
+        for port in arduino_manager.list_ports()
+    ])
+    return jsonify([ {"port": port["device"],"name":port["name"] ,"description": port["description"], "manufacturer": port["manufacturer"]}
+        for port in arduino_manager.list_ports()
+    ])
+    #return jsonify( arduino_manager.list_ports())
 
 
 @arduino_bp.get("/status")
