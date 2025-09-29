@@ -8,7 +8,7 @@ arduino_bp = Blueprint("arduino", __name__)
 
 
 @arduino_bp.get("/ports")
-@jwt_required()
+#@jwt_required()
 def list_ports():
     print([ {"port": port["device"],"name":port["name"] ,"description": port["description"], "manufacturer": port["manufacturer"]}
         for port in arduino_manager.list_ports()
@@ -20,14 +20,14 @@ def list_ports():
 
 
 @arduino_bp.get("/status")
-@jwt_required()
+#@jwt_required()
 def status():
     return jsonify(arduino_manager.status())
 
 
 @arduino_bp.post("/connect")
-@jwt_required()
-@roles_required("admin")
+#@jwt_required()
+#@roles_required("admin")
 def connect():
     data = request.get_json(force=True, silent=True) or {}
     port = data.get("port")
@@ -39,15 +39,15 @@ def connect():
 
 
 @arduino_bp.post("/disconnect")
-@jwt_required()
-@roles_required("admin")
+#@jwt_required()
+#@roles_required("admin")
 def disconnect():
     ok, msg = arduino_manager.disconnect()
     return jsonify({"success": ok, "message": msg, "status": arduino_manager.status()})
 
 
 @arduino_bp.get("/refresh-ports")
-@jwt_required()
+#@jwt_required()
 def refresh():
     # Alias to list ports (forces re-enumeration)
     print([ {"port": port["device"],"name":port["name"] ,"description": port["description"], "manufacturer": port["manufacturer"]}
@@ -59,8 +59,8 @@ def refresh():
 
 
 @arduino_bp.post("/test-capture")
-@jwt_required()
-@roles_required("admin")
+#@jwt_required()
+#@roles_required("admin")
 def test_capture():
     data = request.get_json(force=True, silent=True) or {}
     entity = (data.get("entity") or "").strip().lower()
