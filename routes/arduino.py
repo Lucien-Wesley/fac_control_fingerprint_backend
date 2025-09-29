@@ -44,6 +44,9 @@ def disconnect():
 @jwt_required()
 def refresh():
     # Alias to list ports (forces re-enumeration)
+    print([ {"port": port["device"],"name":port["name"] ,"description": port["description"], "manufacturer": port["manufacturer"]}
+        for port in arduino_manager.list_ports()
+    ])
     return jsonify([ {"port": port["device"],"name":port["name"] ,"description": port["description"], "manufacturer": port["manufacturer"]}
         for port in arduino_manager.list_ports()
     ])
