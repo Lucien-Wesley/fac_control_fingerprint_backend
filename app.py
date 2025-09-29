@@ -41,7 +41,7 @@ def create_app() -> Flask:
 
     return app
 
-
+print("Starting the Flask application...")
 app = create_app()
 
 
