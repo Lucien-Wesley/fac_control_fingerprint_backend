@@ -14,17 +14,29 @@ class TimestampMixin:
 class Student(db.Model, TimestampMixin):
     __tablename__ = "students"
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(120), nullable=False)
+    # Keep legacy full-name field but prefer first/last
+    name = db.Column(db.String(120), nullable=True)
+    first_name = db.Column(db.String(80), nullable=True)
+    last_name = db.Column(db.String(80), nullable=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
     major = db.Column(db.String(120), nullable=True)
+    # New fields requested by the frontend interface
+    student_number = db.Column(db.String(64), unique=True, nullable=True)
+    year = db.Column(db.Integer, nullable=True)
+    fingerprint_id = db.Column(db.String(128), nullable=True)
     fingerprint_verified = db.Column(db.Boolean, default=False, nullable=False)
 
     def to_dict(self):
         return {
             "id": self.id,
-            "name": self.name,
+            # Prefer firstName/lastName for the frontend; fall back to legacy name
+            "firstName": self.first_name if self.first_name else (self.name.split()[0] if self.name else None),
+            "lastName": self.last_name if self.last_name else (" ".join(self.name.split()[1:]) if self.name and len(self.name.split()) > 1 else None),
             "email": self.email,
             "major": self.major,
+            "studentNumber": self.student_number,
+            "year": self.year,
+            "fingerprintId": self.fingerprint_id,
             "fingerprint_verified": self.fingerprint_verified,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
@@ -34,17 +46,29 @@ class Student(db.Model, TimestampMixin):
 class Professor(db.Model, TimestampMixin):
     __tablename__ = "professors"
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(120), nullable=False)
+    # Keep legacy single-name field for backwards compatibility but prefer first/last
+    name = db.Column(db.String(120), nullable=True)
+    first_name = db.Column(db.String(80), nullable=True)
+    last_name = db.Column(db.String(80), nullable=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
     department = db.Column(db.String(120), nullable=True)
+    # New fields requested by the frontend interface
+    employee_number = db.Column(db.String(64), unique=True, nullable=True)
+    title = db.Column(db.String(120), nullable=True)
+    fingerprint_id = db.Column(db.String(128), nullable=True)
     fingerprint_verified = db.Column(db.Boolean, default=False, nullable=False)
 
     def to_dict(self):
         return {
             "id": self.id,
-            "name": self.name,
+            # Provide firstName/lastName for the frontend; fall back to legacy name when missing
+            "firstName": self.first_name if self.first_name else (self.name.split()[0] if self.name else None),
+            "lastName": self.last_name if self.last_name else (" ".join(self.name.split()[1:]) if self.name and len(self.name.split()) > 1 else None),
             "email": self.email,
             "department": self.department,
+            "employeeNumber": self.employee_number,
+            "title": self.title,
+            "fingerprintId": self.fingerprint_id,
             "fingerprint_verified": self.fingerprint_verified,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
