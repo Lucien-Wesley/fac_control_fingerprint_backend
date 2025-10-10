@@ -26,6 +26,10 @@ ENV/
 .venv/
 .env/
 
+# database files
+*.sqlite3
+*.db
+
 # Environment variables
 .env
 
