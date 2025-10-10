@@ -20,6 +20,7 @@ def start_biometric_enrollment():
     try:
         student_id = int(student_id)
     except Exception:
+        print(f"Invalid studentId: {student_id}")
         return jsonify({"success": False, "error": "Invalid studentId"}), 400
     session_id = str(uuid.uuid4())
     biometric_sessions[session_id] = {
