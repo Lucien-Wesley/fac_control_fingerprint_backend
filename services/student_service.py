@@ -51,25 +51,25 @@ def create_student(data: Dict[str, Any]) -> dict:
         fingerprint_id=fingerprint_id,
     )
     db.session.add(student)
-    # try:
-    #     # Flush to assign ID without committing
-    #     db.session.flush()
-    #     # Compute fingerprint numeric id as the sum of IDs created before this record.
-    #     # We approximate "created before" by summing student IDs < this id and all professor IDs.
-    #     sum_students_before = db.session.query(func.coalesce(func.sum(Student.id), 0)).filter(Student.id < student.id).scalar() or 0
-    #     # Import Professor lazily to avoid circular imports at module load
-    #     from models import Professor
+    try:
+        # Flush to assign ID without committing
+        db.session.flush()
+        # Compute fingerprint numeric id as the sum of IDs created before this record.
+        # We approximate "created before" by summing student IDs < this id and all professor IDs.
+        sum_students_before = db.session.query(func.coalesce(func.sum(Student.id), 0)).filter(Student.id < student.id).scalar() or 0
+        # Import Professor lazily to avoid circular imports at module load
+        from models import Professor
 
-    #     sum_professors = db.session.query(func.coalesce(func.sum(Professor.id), 0)).scalar() or 0
-    #     fingerprint_num = int(sum_students_before + sum_professors)
-    #     # Ensure fingerprint id is at least 1
-    #     if fingerprint_num < 1:
-    #         fingerprint_num = 1
-    #     # Tentatively set numeric fingerprint_id on the model as string
-    #     student.fingerprint_id = str(fingerprint_num)
-    # except IntegrityError:
-    #     db.session.rollback()
-    #     raise ValueError("A unique constraint was violated (email/student number?)")
+        sum_professors = db.session.query(func.coalesce(func.sum(Professor.id), 0)).scalar() or 0
+        fingerprint_num = int(sum_students_before + sum_professors)
+        # Ensure fingerprint id is at least 1
+        if fingerprint_num < 1:
+            fingerprint_num = 1
+        # Tentatively set numeric fingerprint_id on the model as string
+        student.fingerprint_id = str(fingerprint_num)
+    except IntegrityError:
+        db.session.rollback()
+        raise ValueError("A unique constraint was violated (email/student number?)")
 
     # # Perform biometric capture via Arduino before final commit using the computed fingerprint id
     # try:

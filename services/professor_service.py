@@ -46,21 +46,21 @@ def create_professor(data: Dict[str, Any]) -> dict:
         fingerprint_id=fingerprint_id,
     )
     db.session.add(professor)
-    # try:
-    #     # Flush to assign ID without committing
-    #     db.session.flush()
-    #     # Compute fingerprint numeric id as the sum of IDs created before this record.
-    #     # Sum professor IDs < this id and all student IDs.
-    #     sum_professors_before = db.session.query(func.coalesce(func.sum(Professor.id), 0)).filter(Professor.id < professor.id).scalar() or 0
-    #     from models import Student
-    #     sum_students = db.session.query(func.coalesce(func.sum(Student.id), 0)).scalar() or 0
-    #     fingerprint_num = int(sum_professors_before + sum_students)
-    #     if fingerprint_num < 1:
-    #         fingerprint_num = 1
-    #     professor.fingerprint_id = str(fingerprint_num)
-    # except IntegrityError:
-    #     db.session.rollback()
-    #     raise ValueError("A unique constraint was violated (email/employee number?)")
+    try:
+        # Flush to assign ID without committing
+        db.session.flush()
+        # Compute fingerprint numeric id as the sum of IDs created before this record.
+        # Sum professor IDs < this id and all student IDs.
+        sum_professors_before = db.session.query(func.coalesce(func.sum(Professor.id), 0)).filter(Professor.id < professor.id).scalar() or 0
+        from models import Student
+        sum_students = db.session.query(func.coalesce(func.sum(Student.id), 0)).scalar() or 0
+        fingerprint_num = int(sum_professors_before + sum_students)
+        if fingerprint_num < 1:
+            fingerprint_num = 1
+        professor.fingerprint_id = str(fingerprint_num)
+    except IntegrityError:
+        db.session.rollback()
+        raise ValueError("A unique constraint was violated (email/employee number?)")
 
     # # Perform biometric capture via Arduino before final commit using the computed fingerprint id
     # try:

@@ -32,7 +32,7 @@ def seed_students(fake: Faker, n: int = 5) -> None:
         major = fake.random_element(elements=("CS", "Math", "Physics", "Biology", "Economics"))
         student_number = f"S{fake.random_number(digits=6, fix_len=True)}"
         year = fake.random_int(min=1, max=5)
-        fingerprint_id = None
+        #fingerprint_id = None
         s = Student(
             name=full_name,
             first_name=first,
@@ -41,7 +41,7 @@ def seed_students(fake: Faker, n: int = 5) -> None:
             major=major,
             student_number=student_number,
             year=year,
-            fingerprint_id=fingerprint_id,
+            #fingerprint_id=fingerprint_id,
             fingerprint_verified=True,
         )
         db.session.add(s)
