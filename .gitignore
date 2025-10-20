@@ -29,6 +29,7 @@ ENV/
 # database files
 *.sqlite3
 *.db
+instance/
 
 # Environment variables
 .env
