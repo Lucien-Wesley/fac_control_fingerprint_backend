@@ -31,7 +31,7 @@ def start_biometric_enrollment():
     print(f"Starting biometric enrollment for student ID {student_id} with session ID {session_id}")
     # Start enrollment (simulate async, but run inline for now)
     max_retries: int = 3
-    per_try_timeout: float = 20.0
+    per_try_timeout: float = 40.0
     success, message = arduino_manager.enroll_fingerprint(entity_id=student_id, max_retries=max_retries, per_try_timeout=per_try_timeout)
     biometric_sessions[session_id]["status"] = "success" if success else "failed"
     biometric_sessions[session_id]["result"] = message

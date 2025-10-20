@@ -125,6 +125,7 @@ class ArduinoManager:
                     start = time.time()
                     while time.time() - start < per_try_timeout:
                         text = (self._read_line(timeout=2.0) or "").upper()
+                        print(f"Enroll attempt {attempt}, received: {text}")
                         if not text:
                             continue
                         if "ENREGISTREMENT: SUCCES" in text:
