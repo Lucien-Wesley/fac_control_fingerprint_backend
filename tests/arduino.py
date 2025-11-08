@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import List, Optional, Tuple, Iterator, Dict
+from typing import List, Optional, Tuple
 
 import serial
 import serial.tools.list_ports
@@ -67,14 +67,13 @@ class ArduinoManager:
     def disconnect(self) -> Tuple[bool, str]:
         with self._lock:
             if self._ser:
-                success = True
-                prev_port = self._port
                 try:
                     self._ser.close()
                 finally:
                     self._ser = None
+                    prev = self._port
                     self._port = None
-                return success, f"Disconnected from {prev_port}"
+                    return True, f"Disconnected from {prev}"
             return True, "Not connected"
 
     def status(self) -> dict:
@@ -185,78 +184,6 @@ class ArduinoManager:
                     continue
                 # ignore other lines
             return False, f"Verification timeout ({last_msg})", None
-
-    def verify_fingerprint_stream(
-        self,
-        expected_id: Optional[int] = None,
-        per_try_timeout: float = 3.0,
-        max_polls: int = 0,
-    ) -> Iterator[Dict]:
-        """
-        Streaming generator for verification.
-        Yields dict events while polling the device. Events:
-          - {"event":"info","message":...}
-          - {"event":"line","raw": "..."}           # raw line received
-          - {"event":"attempt_failed","message":...}
-          - {"event":"result","success":bool,"matched_id":int|None,"message":...}
-          - {"event":"timeout","message":...}
-        If max_polls == 0, will poll until device returns a definitive result or timeout occurs per read.
-        NOTE: This holds the serial lock for the duration of the generator to avoid concurrent access.
-        """
-        with self._lock:
-            if not (self._ser and self._ser.is_open):
-                yield {"event": "error", "message": "Arduino not connected"}
-                return
-
-            self._ser.reset_input_buffer()
-            # Enter verify mode
-            self._write_line("V")
-            _ = self._read_line(timeout=1.0)
-
-            polls = 0
-            last_msg = ""
-            try:
-                while True:
-                    if max_polls and polls >= max_polls:
-                        yield {"event": "timeout", "message": f"Verification timeout ({last_msg})"}
-                        return
-
-                    polls += 1
-                    text = (self._read_line(timeout=per_try_timeout) or "").strip()
-                    if not text:
-                        # keep-alive / heartbeat so caller knows we're still alive
-                        yield {"event": "keepalive", "poll": polls}
-                        continue
-
-                    # yield raw line for client to decide
-                    yield {"event": "line", "raw": text}
-
-                    up = text.upper()
-                    if up.startswith("VERIFICATION: SUCCES"):
-                        matched_id = None
-                        for tok in text.split():
-                            if tok.isdigit():
-                                matched_id = int(tok)
-                        ok = (expected_id is None) or (matched_id == expected_id)
-                        yield {
-                            "event": "result",
-                            "success": ok,
-                            "matched_id": matched_id,
-                            "message": "Verification success" if ok else f"Matched ID {matched_id}, expected {expected_id}",
-                        }
-                        return
-
-                    if "VERIFICATION: ECHEC" in up:
-                        last_msg = "ECHEC"
-                        yield {"event": "attempt_failed", "message": text}
-                        # continue polling
-                        continue
-
-                    # Other messages (INFO/ACK) forwarded
-                    yield {"event": "info", "message": text}
-            finally:
-                # ensure we exit cleanly; nothing special to do here
-                pass
 
     # Backward-compatible wrapper used by existing services for registration
     def capture_fingerprint(
