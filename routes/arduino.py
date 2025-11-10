@@ -49,7 +49,7 @@ def get_status():
 
     return jsonify({
         "status": "OK",
-        "is_connected": arduino_manager.ser is not None,
+        "is_connected": arduino_manager._ser is not None,
         "last_message": last_msg,
         "status_file_content": file_content
     })
