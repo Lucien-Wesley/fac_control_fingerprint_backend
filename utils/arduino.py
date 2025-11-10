@@ -144,6 +144,8 @@ class ArduinoManager:
                     if line:
                         print(f"ARDUINO -> {line}")
                         self._save_last_message(f"{line}")
+                        if "SUCCES" in line or "ECHEC" in line or "ABANDONNE" in line:
+                            time.sleep(2)  # Pause pour laisser le temps à l'utilisateur de voir le message
                 else:
                     time.sleep(0.05) # Petite pause pour libérer le CPU
             except serial.SerialTimeoutException:
