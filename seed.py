@@ -23,7 +23,7 @@ def ensure_admin(fake: Faker) -> None:
 
 
 def seed_students(fake: Faker, n: int = 5) -> None:
-    for _ in range(n):
+    for i in range(n):
         full_name = fake.name()
         parts = full_name.split()
         first = parts[0]
@@ -32,7 +32,7 @@ def seed_students(fake: Faker, n: int = 5) -> None:
         major = fake.random_element(elements=("CS", "Math", "Physics", "Biology", "Economics"))
         student_number = f"S{fake.random_number(digits=6, fix_len=True)}"
         year = fake.random_int(min=1, max=5)
-        #fingerprint_id = None
+        fingerprint_id = i + 1
         s = Student(
             name=full_name,
             first_name=first,
@@ -41,14 +41,14 @@ def seed_students(fake: Faker, n: int = 5) -> None:
             major=major,
             student_number=student_number,
             year=year,
-            #fingerprint_id=fingerprint_id,
-            fingerprint_verified=True,
+            fingerprint_id=fingerprint_id,
+            fingerprint_verified=False,
         )
         db.session.add(s)
 
 
 def seed_professors(fake: Faker, n: int = 5) -> None:
-    for _ in range(n):
+    for i in range(n):
         full_name = fake.name()
         parts = full_name.split()
         first = parts[0]
@@ -57,7 +57,7 @@ def seed_professors(fake: Faker, n: int = 5) -> None:
         dept = fake.random_element(elements=("CS", "Math", "Physics", "Biology", "Economics"))
         employee_number = f"E{fake.random_number(digits=6, fix_len=True)}"
         title = fake.random_element(elements=("Assistant", "Associate", "Professor", "Lecturer"))
-        fingerprint_id = None
+        fingerprint_id = n + i + 1
         p = Professor(
             name=full_name,
             first_name=first,
@@ -67,7 +67,7 @@ def seed_professors(fake: Faker, n: int = 5) -> None:
             employee_number=employee_number,
             title=title,
             fingerprint_id=fingerprint_id,
-            fingerprint_verified=True,
+            fingerprint_verified=False,
         )
         db.session.add(p)
 

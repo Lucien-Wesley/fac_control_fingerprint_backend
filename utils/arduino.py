@@ -7,6 +7,8 @@ from typing import List, Optional, Tuple, Iterator, Dict
 import serial
 import serial.tools.list_ports
 
+STATUS_FILE_PATH = 'last_message.txt'
+
 
 class ArduinoManager:
     """Arduino serial manager implementing the provided firmware protocol.
@@ -22,12 +24,30 @@ class ArduinoManager:
           'ENREGISTREMENT: EN_COURS | SUCCES | ECHEC | ABANDONNE'
           'ACK:...' | 'ERR:...' | 'INFO: ...' | 'PORTE: ...' | 'CAPTEUR: ...'
     """
+    """
+    Gère la connexion série Arduino et la lecture en arrière-plan.
+    """
+    _instance = None
+    _is_running = False
+
+    def __new__(cls, *args, **kwargs):
+        """Implémente le pattern Singleton."""
+        if cls._instance is None:
+            cls._instance = super(ArduinoManager, cls).__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
+        self.last_message = "Initialisation en cours..."
+        self.message_lock = threading.Lock()
         self._ser: Optional[serial.Serial] = None
         self._port: Optional[str] = None
         self._baudrate: int = 9600
+
+        self.reader_thread = None
+        self._initialized = True
+        self._is_running = False
 
     # ---------------------- Connection management ----------------------
     def list_ports(self) -> List[dict]:
@@ -58,6 +78,8 @@ class ArduinoManager:
                 self._ser = ser
                 self._port = port
                 self._baudrate = baudrate
+                # Démarrer le thread de lecture après la connexion
+                self.start_reader()
                 return True, f"Connected to {port} at {baudrate}"
             except Exception as e:
                 self._ser = None
@@ -95,178 +117,92 @@ class ArduinoManager:
         self._ser.timeout = timeout
         line = self._ser.readline()
         return line.decode("utf-8", errors="ignore").strip()
+    
+    def _save_last_message(self, message):
+        """Met à jour le dernier message et l'écrit dans le fichier."""
+        with self.message_lock:
+            self.last_message = message
+            try:
+                with open(STATUS_FILE_PATH, 'w', encoding='utf-8') as f:
+                    # Ajoute un timestamp pour la traçabilité
+                    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+                    f.write(f"[{timestamp}] {message}")
+            except IOError as e:
+                print(f"AVERTISSEMENT: Impossible d'écrire dans le fichier de statut: {e}")
 
     # ---------------------- Enrollment & Verification ----------------------
-    def enroll_fingerprint(
-        self,
-        entity_id: int,
-        max_retries: int = 3,
-        per_try_timeout: float = 20.0,
-    ) -> Tuple[bool, str]:
-        """Enroll a fingerprint for a given ID using E + I:<id> sequence.
-        Expects 'ENREGISTREMENT: SUCCES' from device.
-        """
-        with self._lock:
-            if not (self._ser and self._ser.is_open):
-                return False, "Arduino not connected"
-
-            self._ser.reset_input_buffer()
-            last_msg = ""
-            for attempt in range(1, max_retries + 1):
-                try:
-                    # Enter enrollment mode and set ID
-                    self._write_line("E")
-                    # read ack lines quickly (non-blocking-ish)
-                    _ = self._read_line(timeout=1.0)
-                    self._write_line(f"I:{int(entity_id)}")
-                    _ = self._read_line(timeout=1.0)
-
-                    # Wait for enrollment result
-                    # Device will emit ENREGISTREMENT: EN_COURS, then SUCCES or ECHEC/ABANDONNE
-                    start = time.time()
-                    while time.time() - start < per_try_timeout:
-                        text = (self._read_line(timeout=2.0) or "").upper()
-                        print(f"Enroll attempt {attempt}, received: {text}")
-                        if not text:
-                            continue
-                        if "ENREGISTREMENT: SUCCES" in text:
-                            return True, f"Enroll success on attempt {attempt}"
-                        if "ENREGISTREMENT: ECHEC" in text:
-                            last_msg = "ECHEC"
-                            break
-                        if "ENREGISTREMENT: ABANDONNE" in text:
-                            return False, "Enroll cancelled"
-                        # ignore other INFO/ACK lines
-                    # retry if not successful
-                except Exception as e:
-                    last_msg = f"Error: {e}"
-            return False, f"Enroll failed after {max_retries} attempts ({last_msg})"
-
-    def verify_fingerprint(
-        self,
-        expected_id: Optional[int] = None,
-        per_try_timeout: float = 3.0,
-        max_polls: int = 10,
-    ) -> Tuple[bool, str, Optional[int]]:
-        """Verify by switching to V mode and polling for VERIFICATION result.
-        Returns (success, message, matched_id). If expected_id is set, success is True only if matched_id == expected_id.
-        """
-        with self._lock:
-            if not (self._ser and self._ser.is_open):
-                return False, "Arduino not connected", None
-
-            self._ser.reset_input_buffer()
-            # Enter verify mode
-            self._write_line("V")
-            _ = self._read_line(timeout=1.0)
-
-            polls = 0
-            last_msg = ""
-            while polls < max_polls:
-                polls += 1
-                text = (self._read_line(timeout=per_try_timeout) or "").upper()
-                if not text:
-                    continue
-                if text.startswith("VERIFICATION: SUCCES"):
-                    # Attempt to parse ID
-                    matched_id = None
-                    # find trailing number
-                    for tok in text.split():
-                        if tok.isdigit():
-                            matched_id = int(tok)
-                    # If expected specified, compare
-                    if expected_id is None or (matched_id == expected_id):
-                        return True, "Verification success", matched_id
-                    else:
-                        return False, f"Verification matched ID {matched_id}, expected {expected_id}", matched_id
-                if "VERIFICATION: ECHEC" in text:
-                    last_msg = "ECHEC"
-                    # keep polling for next attempt
-                    continue
-                # ignore other lines
-            return False, f"Verification timeout ({last_msg})", None
-
-    def verify_fingerprint_stream(
-        self,
-        expected_id: Optional[int] = None,
-        per_try_timeout: float = 3.0,
-        max_polls: int = 0,
-    ) -> Iterator[Dict]:
-        """
-        Streaming generator for verification.
-        Yields dict events while polling the device. Events:
-          - {"event":"info","message":...}
-          - {"event":"line","raw": "..."}           # raw line received
-          - {"event":"attempt_failed","message":...}
-          - {"event":"result","success":bool,"matched_id":int|None,"message":...}
-          - {"event":"timeout","message":...}
-        If max_polls == 0, will poll until device returns a definitive result or timeout occurs per read.
-        NOTE: This holds the serial lock for the duration of the generator to avoid concurrent access.
-        """
-        with self._lock:
-            if not (self._ser and self._ser.is_open):
-                yield {"event": "error", "message": "Arduino not connected"}
-                return
-
-            self._ser.reset_input_buffer()
-            # Enter verify mode
-            self._write_line("V")
-            _ = self._read_line(timeout=1.0)
-
-            polls = 0
-            last_msg = ""
+    def _serial_reader(self):
+        """Fonction du thread: lit en continu le port série."""
+        print("INFO: Thread de lecture série démarré.")
+        while self._is_running and self._ser:
             try:
-                while True:
-                    if max_polls and polls >= max_polls:
-                        yield {"event": "timeout", "message": f"Verification timeout ({last_msg})"}
-                        return
+                # Lecture ligne par ligne non bloquante
+                if self._ser.in_waiting > 0:
+                    # Le .readline() bloquerait si le timeout était non-nul. 
+                    # Avec timeout=0, il retourne immédiatement. On s'assure qu'il y a des données.
+                    line = self._ser.readline().decode('utf-8', errors='ignore').strip()
+                    if line:
+                        print(f"ARDUINO -> {line}")
+                        self._save_last_message(f"INFO : {line}")
+                else:
+                    time.sleep(0.05) # Petite pause pour libérer le CPU
+            except serial.SerialTimeoutException:
+                pass # Géré par in_waiting, mais bonne pratique de l'inclure
+            except serial.SerialException as e:
+                print(f"ERREUR SÉRIE (lecture): {e}")
+                self._save_last_message(f"ERREUR SÉRIE: {e}")
+                self._ser = None # Déconnecter en cas d'erreur grave
+                self._is_running = False
+            except Exception as e:
+                print(f"ERREUR INCONNUE (lecture): {e}")
+                time.sleep(1)
 
-                    polls += 1
-                    text = (self._read_line(timeout=per_try_timeout) or "").strip()
-                    if not text:
-                        # keep-alive / heartbeat so caller knows we're still alive
-                        yield {"event": "keepalive", "poll": polls}
-                        continue
+        print("INFO: Thread de lecture série arrêté.")
 
-                    # yield raw line for client to decide
-                    yield {"event": "line", "raw": text}
 
-                    up = text.upper()
-                    if up.startswith("VERIFICATION: SUCCES"):
-                        matched_id = None
-                        for tok in text.split():
-                            if tok.isdigit():
-                                matched_id = int(tok)
-                        ok = (expected_id is None) or (matched_id == expected_id)
-                        yield {
-                            "event": "result",
-                            "success": ok,
-                            "matched_id": matched_id,
-                            "message": "Verification success" if ok else f"Matched ID {matched_id}, expected {expected_id}",
-                        }
-                        return
+    def start_reader(self):
+        """Démarre le thread de lecture."""
+        if self._ser and not self._is_running:
+            self._is_running = True
+            self.reader_thread = threading.Thread(target=self._serial_reader, daemon=True)
+            self.reader_thread.start()
 
-                    if "VERIFICATION: ECHEC" in up:
-                        last_msg = "ECHEC"
-                        yield {"event": "attempt_failed", "message": text}
-                        # continue polling
-                        continue
+    def send_command(self, command):
+        """Envoie une commande à l'Arduino."""
+        if not self._ser:
+            # Mode sans Arduino, renvoyer une erreur explicite
+            error_msg = f"ERREUR: Non connecté au port série (sélectionné ou par défaut)."
+            self._save_last_message(error_msg)
+            return False, error_msg
 
-                    # Other messages (INFO/ACK) forwarded
-                    yield {"event": "info", "message": text}
-            finally:
-                # ensure we exit cleanly; nothing special to do here
-                pass
+        try:
+            # Les commandes de l'Arduino attendent un \n
+            self._ser.write((command + '\n').encode('utf-8'))
+            print(f"PC -> {command}")
+            return True, f"Commande '{command}' envoyée."
+        except serial.SerialException as e:
+            self._save_last_message(f"ERREUR SÉRIE (écriture): {e}")
+            print(f"ERREUR SÉRIE (écriture): {e}")
+            self._ser = None
+            self._is_running = False
+            return False, f"Erreur lors de l'envoi de la commande: {e}"
+        except Exception as e:
+            return False, f"Erreur inattendue lors de l'envoi: {e}"
 
-    # Backward-compatible wrapper used by existing services for registration
-    def capture_fingerprint(
-        self,
-        entity: str,
-        entity_id: int,
-        max_retries: int = 3,
-        per_try_timeout: float = 20.0,
-    ) -> Tuple[bool, str]:
-        return self.enroll_fingerprint(entity_id=entity_id, max_retries=max_retries, per_try_timeout=per_try_timeout)
+    def get_last_message(self):
+        """Récupère le dernier message lu."""
+        with self.message_lock:
+            return self.last_message
+
+    def shutdown(self):
+        """Arrête le thread et ferme la connexion série."""
+        if self._is_running:
+            self._is_running = False
+            if self.reader_thread and self.reader_thread.is_alive():
+                self.reader_thread.join(timeout=2)
+        if self._ser:
+            self._ser.close()
+            print("INFO: Connexion série fermée.")
 
 
 arduino_manager = ArduinoManager()

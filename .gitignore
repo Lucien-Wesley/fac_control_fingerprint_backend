@@ -30,6 +30,7 @@ ENV/
 *.sqlite3
 *.db
 instance/
+last_message.txt
 
 # Environment variables
 .env

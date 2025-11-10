@@ -2,7 +2,8 @@ from flask import Blueprint, jsonify, request, Response, stream_with_context, js
 from flask_jwt_extended import jwt_required
 from models import AccessLog, Student, Professor
 
-from utils.arduino import arduino_manager
+from utils.arduino import arduino_manager, STATUS_FILE_PATH
+import os
 from utils.auth_utils import roles_required
 
 arduino_bp = Blueprint("arduino", __name__)
@@ -24,6 +25,34 @@ def list_ports():
 #@jwt_required()
 def status():
     return jsonify(arduino_manager.status())
+
+
+@arduino_bp.route('/output', methods=['GET'])
+def get_status():
+    """
+    Récupère le dernier message lu par le thread série
+    et l'état de la connexion.
+    """
+    last_msg = arduino_manager.get_last_message()
+    
+    # On vérifie si le fichier de statut existe pour confirmation
+    file_exists = os.path.exists(STATUS_FILE_PATH)
+    
+    # Lecture optionnelle du contenu brut du fichier pour vérification
+    file_content = ""
+    if file_exists:
+        try:
+            with open(STATUS_FILE_PATH, 'r', encoding='utf-8') as f:
+                file_content = f.read().strip()
+        except IOError:
+            file_content = "Erreur de lecture du fichier."
+
+    return jsonify({
+        "status": "OK",
+        "is_connected": arduino_manager.ser is not None,
+        "last_message": last_msg,
+        "status_file_content": file_content
+    })
 
 
 @arduino_bp.post("/connect")
@@ -58,49 +87,57 @@ def refresh():
         for port in arduino_manager.list_ports()
     ])
 
-
-@arduino_bp.post("/test-capture")
-#@jwt_required()
-#@roles_required("admin")
-def test_capture():
-    data = request.get_json(force=True, silent=True) or {}
-    entity = (data.get("entity") or "").strip().lower()
-    entity_id = data.get("entity_id")
-    max_retries = int(data.get("max_retries") or 3)
-    if entity not in {"student", "professor"}:
-        return jsonify({"error": "'entity' must be 'student' or 'professor'"}), 400
-    try:
-        entity_id = int(entity_id)
-    except Exception:
-        return jsonify({"error": "'entity_id' must be an integer"}), 400
-
-    success, message = arduino_manager.capture_fingerprint(entity=entity, entity_id=entity_id, max_retries=max_retries)
-    return jsonify({"success": success, "response": message}) , (200 if success else 400)
-
-# -------------------- Streaming verification (SSE) --------------------
-@arduino_bp.get("/verify-stream")
-#@jwt_required()
-def verify_stream():
+@arduino_bp.route('/verify', methods=['POST'])
+def set_verify_mode():
     """
-    Server-Sent Events endpoint that streams verification events from the Arduino.
-    Query params:
-      - expected_id: (optional) integer ID to match against enrolled fingerprint
-      - per_try_timeout: (optional) float seconds to wait per read (default 3.0)
-      - max_polls: (optional) int max poll iterations (0 = unlimited)
-    Example: /arduino/verify-stream?expected_id=5&per_try_timeout=2&max_polls=0
+    Envoie la commande 'V' pour passer en mode VERIFICATION.
     """
-    expected_id = request.args.get("expected_id", default=None, type=int)
-    per_try_timeout = float(request.args.get("per_try_timeout", 3.0))
-    max_polls = int(request.args.get("max_polls", 0))
+    success, message = arduino_manager.send_command('V')
+    if success:
+        return jsonify({"success": True, "message": message}), 200
+    else:
+        return jsonify({"success": False, "error": message}), 503
 
-    def gen():
-        for ev in arduino_manager.verify_fingerprint_stream(
-            expected_id=expected_id, per_try_timeout=per_try_timeout, max_polls=max_polls
-        ):
-            # SSE format: data: <json>\n\n
-            yield f"data: {json.dumps(ev)}\n\n"
+@arduino_bp.route('/enroll/<int:id>', methods=['POST'])
+def start_enrollment(id):
+    """
+    Définit l'ID ('I:<id>') puis passe en mode ENREGISTREMENT ('E').
+    L'ID doit être entre 0 et 127 selon le code Arduino.
+    """
+    if not 0 <= id <= 127:
+        return jsonify({"success": False, "error": "L'ID doit être entre 0 et 127."}), 400
 
-    return Response(stream_with_context(gen()), mimetype="text/event-stream")
+    # 1. Définir l'ID
+    id_command = f"I{id}" 
+    success_id, msg_id = arduino_manager.send_command(id_command)
+
+    if not success_id:
+        return jsonify({"success": False, "error": f"Échec de la commande ID: {msg_id}"}), 503
+
+    # 2. Passer en mode ENREGISTREMENT
+    success_enroll, msg_enroll = arduino_manager.send_command('E')
+
+    if success_enroll:
+        return jsonify({
+            "success": True, 
+            "message": f"ID {id} défini. Mode ENREGISTREMENT activé. Suivez les instructions Arduino."
+        }), 200
+    else:
+        return jsonify({"success": False, "error": f"Échec de la commande ENROLL: {msg_enroll}"}), 503
+
+
+@arduino_bp.route('/cancel', methods=['POST'])
+def cancel_enrollment():
+    """
+    Envoie la commande 'C' pour annuler l'enregistrement en cours.
+    """
+    success, message = arduino_manager.send_command('C')
+    if success:
+        return jsonify({"success": True, "message": message}), 200
+    else:
+        return jsonify({"success": False, "error": message}), 503
+
+
 
 
 
