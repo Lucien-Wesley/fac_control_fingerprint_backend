@@ -145,7 +145,7 @@ class ArduinoManager:
                         print(f"ARDUINO -> {line}")
                         self._save_last_message(f"{line}")
                         if "SUCCESS" in line or "SUCCES" in line:
-                            time.sleep(1) # Attendre un peu après un succès
+                            # time.sleep(1) # Attendre un peu après un succès
                             self.send_command("V")  # Retour en mode vérification après succès
                 else:
                     time.sleep(0.05) # Petite pause pour libérer le CPU
