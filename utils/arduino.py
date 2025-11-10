@@ -143,7 +143,7 @@ class ArduinoManager:
                     line = self._ser.readline().decode('utf-8', errors='ignore').strip()
                     if line:
                         print(f"ARDUINO -> {line}")
-                        self._save_last_message(f"INFO : {line}")
+                        self._save_last_message(f"{line}")
                 else:
                     time.sleep(0.05) # Petite pause pour libérer le CPU
             except serial.SerialTimeoutException:
