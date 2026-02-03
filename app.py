@@ -36,7 +36,7 @@ def create_app() -> Flask:
 
     # Create tables if they don't exist
     with app.app_context():
-        from models import Student, Professor, User  # noqa: F401 - ensure models are registered
+        from models import Student, Professor, User  
         db.create_all()
 
     return app
